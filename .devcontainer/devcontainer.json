@@ -1,0 +1,6 @@
+{
+  "name": "rust-upgrader",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [3000],
+  "postStartCommand": "nohup bash start.sh > server.log 2>&1 &"
+}
