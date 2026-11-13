@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Апгрейдер</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#101418;--panel:#181e25;--ink:#eef1f4;--mut:#8995a3;--gold:#f5c542;--onGold:#1d1604;--ok:#3ddc97;--bad:#ff6161}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px))}
+h2{font-size:15px;font-weight:600;color:var(--mut);margin:26px 0 10px}
+.panel{background:var(--panel);border-radius:14px;padding:16px}
+.big{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums}
+.big small{font-size:15px;color:var(--mut);font-weight:500;margin-left:8px}
+input[type=range]{width:100%;accent-color:var(--gold);margin:14px 0 4px}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:14px;width:100%;cursor:pointer;background:var(--gold);color:var(--onGold)}
+button:disabled{opacity:.5}
+button:focus-visible,.tk:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+#list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tk{position:relative;background:var(--gold);color:var(--onGold);border-radius:10px;padding:14px 16px;cursor:pointer;
+ -webkit-mask:radial-gradient(circle 9px at 0 50%,#0000 98%,#000) left/51% 100% no-repeat,radial-gradient(circle 9px at 100% 50%,#0000 98%,#000) right/51% 100% no-repeat;
+ mask:radial-gradient(circle 9px at 0 50%,#0000 98%,#000) left/51% 100% no-repeat,radial-gradient(circle 9px at 100% 50%,#0000 98%,#000) right/51% 100% no-repeat;
+ border:0;text-align:left;font:inherit;opacity:.6;transition:opacity .15s,transform .15s}
+.tk.on{opacity:1;transform:scale(1.03)}
+.tk b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.tk span{font-size:13px;opacity:.75}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.chip{width:auto;padding:10px 14px;background:#232b35;color:var(--ink)}
+.chip.on{background:var(--ink);color:var(--bg)}
+#info,.mut{color:var(--mut);font-size:14px}
+#info{margin:0 0 12px}
+#res{min-height:28px;margin-top:12px;font-weight:700;text-align:center}
+#res.win{color:var(--ok)}#res.lose{color:var(--bad)}
+@media (prefers-reduced-motion:reduce){.tk{transition:none}}
+</style>
+</head>
+<body>
+<h2 style="margin-top:0">Купить билет</h2>
+<div class="panel">
+  <div class="big"><span id="stars">100</span> ☆<small id="eur">1 €</small></div>
+  <input id="amt" type="range" min="100" max="1000" step="50" value="100" aria-label="Сумма билета">
+  <p class="mut" style="margin:0 0 14px"><span id="lo"></span> — <span id="hi"></span></p>
+  <button id="buy">Купить билет</button>
+</div>
+
+<h2>Мои билеты</h2>
+<div id="list"></div>
+
+<div id="up" hidden>
+  <h2>Апгрейд</h2>
+  <div class="panel">
+    <div class="chips" id="mults"></div>
+    <p id="info"></p>
+    <button id="go">Апгрейд</button>
+    <div id="res" role="status"></div>
+  </div>
+</div>
+
+<script>
+const API = 'https://ВАШ-СЕРВЕР';   // <-- адрес, где запущен server.js
+const RATE = 100;                    // сколько ☆ в 1 €
+const tg = Telegram.WebApp; tg.ready(); tg.expand();
+const $ = id => document.getElementById(id);
+let S = { t: [], cfg: { MIN: 100, MAX: 1000, MULTS: [2], EDGE: .95 } }, sel = null, mult = 2;
+const eur = v => (v / RATE).toFixed(2).replace(/\.00$/, '') + ' €';
+
+async function call(p, d = {}) {
+  const r = await fetch(API + '/api/' + p, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ init: tg.initData, ...d }) });
+  return r.json();
+}
+async function load() { const r = await call('me'); if (r.t) { S = r; } render(); }
+
+function render() {
+  const { MIN, MAX, MULTS, EDGE } = S.cfg, a = $('amt');
+  a.min = MIN; a.max = MAX;
+  if (!MULTS.includes(mult)) mult = MULTS[0];
+  $('stars').textContent = a.value; $('eur').textContent = eur(+a.value);
+  $('lo').textContent = `от ${MIN} ☆ (${eur(MIN)})`; $('hi').textContent = `до ${MAX} ☆ (${eur(MAX)})`;
+  $('buy').textContent = `Купить за ${a.value} ☆`;
+  $('list').innerHTML = S.t.length
+    ? S.t.map(k => `<button class="tk ${k.id === sel ? 'on' : ''}" data-id="${k.id}"><b>${k.v} ☆</b><span>${eur(k.v)}</span></button>`).join('')
+    : '<p class="mut">Билетов пока нет. Купи первый выше.</p>';
+  const k = S.t.find(k => k.id === sel);
+  $('up').hidden = !k;
+  if (k) {
+    $('mults').innerHTML = MULTS.map(m => `<button class="chip ${m === mult ? 'on' : ''}" data-m="${m}">x${m}</button>`).join('');
+    $('info').textContent = `Шанс ${(EDGE / mult * 100).toFixed(1)}%. Выигрыш: ${Math.round(k.v * mult)} ☆ (${eur(Math.round(k.v * mult))}). При проигрыше билет сгорает.`;
+  }
+}
+
+$('amt').oninput = render;
+$('list').onclick = e => { const c = e.target.closest('.tk'); if (c) { sel = c.dataset.id; $('res').textContent = ''; render(); } };
+$('mults').onclick = e => { const c = e.target.closest('.chip'); if (c) { mult = +c.dataset.m; render(); } };
+$('buy').onclick = async () => {
+  const r = await call('buy', { amount: +$('amt').value });
+  if (!r.link) return tg.showAlert('Не удалось создать счёт');
+  tg.openInvoice(r.link, s => { if (s === 'paid') setTimeout(load, 1500); });
+};
+$('go').onclick = async () => {
+  $('go').disabled = true;
+  const r = await call('up', { id: sel, m: mult });
+  $('go').disabled = false;
+  if (r.e) return tg.showAlert('Ошибка, попробуй ещё раз');
+  tg.HapticFeedback.notificationOccurred(r.win ? 'success' : 'error');
+  S = { t: r.t, cfg: r.cfg };
+  if (!r.win) sel = null;
+  render();
+  $('res').className = r.win ? 'win' : 'lose';
+  $('res').textContent = r.win ? 'Успех! Билет улучшен' : 'Не повезло, билет сгорел';
+};
+render(); load();
+</script>
+</body>
+</html>
